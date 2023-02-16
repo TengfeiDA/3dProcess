@@ -45,10 +45,28 @@ def draw_points_cloud(points):
     vis.destroy_window() #销毁窗口，该函数必须从主线程调用
 
 
+def iss(points):
+
+    # 1. 对每个点选取周围r半径内的邻域点
+
+    # 2. 对每个邻域内的所有点，一起计算加权PCA
+
+    # 3. 根据PCA得到的特征值判断是否为特征点
+
+    # 4. 将特征点特殊显示出来
+
+    return
+
 def main():
-    off_filename = "./ModelNet40/airplane/test/airplane_0627.off"
+    off_filename = "./data/ModelNet40/airplane/test/airplane_0627.off"
     points, _ = read_off(off_filename)
-    print("points: ", points.shape)
+    min_pos = points.min(axis=0)
+    max_pos = points.max(axis=0)
+    np.set_printoptions(suppress=True)
+    print("points num: ", points.shape[0])
+    print("min_pos: ", min_pos)
+    print("max_pos: ", max_pos)
+
     draw_points_cloud(points)
 
 
