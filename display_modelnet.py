@@ -46,7 +46,7 @@ def draw_points_cloud(points):
 
 
 def main():
-    off_filename = "./ModelNet40/airplane/test/airplane_0627.off"
+    off_filename = "./data/airplane_0627.off"
     points, _ = read_off(off_filename)
     print("points: ", points.shape)
     draw_points_cloud(points)
