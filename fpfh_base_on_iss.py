@@ -265,7 +265,7 @@ def weighted_sum_of_spfh(points, all_neighbors_indices, all_normals, bin_num, qu
 def FPFH(points, all_neighbors_indices, all_normals, feature_indices):
     start_time = time.time()
 
-    bin_num = 11
+    bin_num = 21
     all_fpfhs = np.zeros((len(feature_indices), 3*bin_num))
     for i, index in enumerate(feature_indices):
         neighbor_indices = all_neighbors_indices[index]
@@ -351,6 +351,8 @@ def main():
     #     print(i, ",", points[index])
     # print("\nCompare feature points")
     # compare(points[feature_indices])
+
+    np.save("feature_indices.npy", feature_indices)
 
     all_fpfhs = FPFH(points, all_neighbors_indices,
                      all_normals, feature_indices)
