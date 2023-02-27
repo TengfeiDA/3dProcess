@@ -6,5 +6,6 @@ import time
 a = np.random.randn(10, 3)
 print(a)
 
-b = np.arange(0, 100, 2)
-print(b)
+
+R = np.eye(3)
+print(R)
