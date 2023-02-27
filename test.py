@@ -3,9 +3,6 @@ import open3d as o3d
 import time
 
 
-a = np.random.randn(10, 3)
+a = np.asarray([1, 2, 3])
 print(a)
-
-
-R = np.eye(3)
-print(R)
+print(np.tile(a, (10, 1)))
