@@ -69,7 +69,7 @@ def visualize_pc_pair(src_np, dst_np):
     pcd_dst.paint_uniform_color([0, 1, 0])
 
     vis = o3d.visualization.Visualizer()
-    vis.create_window()
+    vis.create_window(width=1200, height=800)
 
     render_option = vis.get_render_option()
     render_option.background_color = np.array([0, 0, 0])  # 设置背景为黑色
@@ -85,9 +85,10 @@ def visualize_pc_pair(src_np, dst_np):
 
 def visualize_correspondence(src_np, dst_np, corr_i, corr_j):
     points = np.vstack((src_np, dst_np))
-    num = src_np.shape[0]
-    src_colors = np.tile(np.asarray([1, 0, 0]), (num, 1))
-    des_colors = np.tile(np.asarray([0, 1, 0]), (num, 1))
+    num1 = src_np.shape[0]
+    num2 = dst_np.shape[0]
+    src_colors = np.tile(np.asarray([1, 0, 0]), (num1, 1))
+    des_colors = np.tile(np.asarray([0, 1, 0]), (num2, 1))
     colors = np.vstack((src_colors, des_colors))
 
     points_pcd = o3d.geometry.PointCloud()
@@ -95,7 +96,7 @@ def visualize_correspondence(src_np, dst_np, corr_i, corr_j):
     points_pcd.colors = o3d.utility.Vector3dVector(colors)
 
     vis = o3d.visualization.Visualizer()
-    vis.create_window()
+    vis.create_window(width=1200, height=800)
 
     render_option = vis.get_render_option()
     render_option.background_color = np.array([0, 0, 0])  # 设置背景为黑色
@@ -104,7 +105,7 @@ def visualize_correspondence(src_np, dst_np, corr_i, corr_j):
 
     vis.add_geometry(points_pcd)
 
-    lines = np.hstack((corr_i.reshape(-1, 1), corr_j.reshape(-1, 1)+num))
+    lines = np.hstack((corr_i.reshape(-1, 1), corr_j.reshape(-1, 1)+num1))
     colors = np.tile(np.asarray([0, 0, 1]), (lines.shape[0], 1))
     line_pcd = o3d.geometry.LineSet()
     line_pcd.lines = o3d.utility.Vector2iVector(lines)
@@ -144,7 +145,7 @@ def get_correspondences(src_points, des_points, des_tree=None):
         min_idx, min_dist = get_nearest_point(point, des_points)
         corr_j[i] = min_idx
         dist[i] = min_dist
-    corr_i = np.where(dist < 20.0)[0]
+    corr_i = np.where(dist < 10.0)[0]
     corr_j = corr_j[corr_i].astype(int)
     print("correspondences:", len(corr_i))
     return corr_i, corr_j
@@ -171,7 +172,6 @@ def compute_A_b(src_points, des_points, des_normals, corr_i, corr_j):
     A_cols[4] = (des_normals[corr_j, 1]).reshape(-1, 1)
     A_cols[5] = (des_normals[corr_j, 2]).reshape(-1, 1)
     A = np.hstack((A_cols))
-    print(A.shape)
 
     b = np.zeros(len(corr_i))
     for i in range(3):
@@ -184,22 +184,19 @@ def compute_A_b(src_points, des_points, des_normals, corr_i, corr_j):
     return A, b
 
 
-def ICP(src_points, src_normals, des_points, des_normals, gt_r, gt_t, gt_loss, gt_corr_i, gt_corr_j, gt_src_trans):
-    # des_tree = build_kd_tree(des_points)
-
+def ICP(src_points, des_points, des_normals, gt_r, gt_t, gt_loss):
     r = np.eye(3)
     t = np.zeros((3, 1))
 
-    for iteration in range(50):
+    for iteration in range(20):
         print("\niteration", iteration)
         # 1. data association(find nearest point)
         src_trans = get_trans_src_points(src_points, r, t)
         corr_i, corr_j = get_correspondences(src_trans, des_points)
-        # corr_i, corr_j, src_trans = gt_corr_i, gt_corr_j, gt_src_trans
         loss = point_to_plane_loss(
             src_trans, corr_i, des_points, des_normals, corr_j)
-        # if iteration % 3 == 0:
-        #     visualize_correspondence(src_trans, des_points, corr_i, corr_j)
+        if iteration % 4 == 0:
+            visualize_correspondence(src_trans, des_points, corr_i, corr_j)
 
         rotation = Rotation.from_matrix(r)
         print("r: ", rotation.as_quat())
@@ -240,9 +237,16 @@ def ICP(src_points, src_normals, des_points, des_normals, gt_r, gt_t, gt_loss, g
 
 
 def downsampling(points, normals):
-    # print("Before downsampling:", points.shape[0])
     indices = np.arange(0, points.shape[0], 2)
-    # print("After downsampling:", len(indices))
+    points = points[indices]
+    normals = normals[indices]
+
+    neighbors_num = np.zeros(points.shape[0])
+    for i, point in enumerate(points):
+        dist = np.linalg.norm(point - points, axis=1)
+        neighbors_num[i] = np.sum(dist < 1.0)
+    indices = np.where(neighbors_num >= 10)
+
     return points[indices], normals[indices]
 
 
@@ -255,7 +259,7 @@ def main():
     # 1. 从reg_result.txt中获取source points cloud和destination points cloud
     reg_list = read_reg_results(
         'registration_dataset/reg_result.txt', splitter=',')
-    for i in range(2, len(reg_list)):
+    for i in range(6, len(reg_list)):
         des_idx, src_idx, gt_t, gt_rot = reg_result_row_to_array(reg_list[i])
 
         src_filename = os.path.join(data_path, '%d.bin' % src_idx)
@@ -264,16 +268,6 @@ def main():
         print("des_filename", des_filename)
         src_points, src_normals = read_oxford_bin(src_filename)
         des_points, des_normals = read_oxford_bin(des_filename)
-
-        # src_tree = build_kd_tree(src_points)
-        # des_trans = get_trans_src_points(des_points, r, t)
-        # corr_i, corr_j = get_correspondences(des_trans, src_points)
-        # loss = point_to_plane_loss(
-        #     des_trans, corr_i, src_points, src_normals, corr_j)
-        # print("Before downsampling: loss", loss, "\n")
-
-        # draw_points_cloud(src_points, "before downsampling: src points")
-        # draw_points_cloud(des_points, "before downsampling: des points")
 
         print("Before downsampling: src points num:", src_points.shape[0])
         print("Before downsampling: des points num:", des_points.shape[0])
@@ -285,13 +279,13 @@ def main():
         print("After downsampling: src points num:", src_points.shape[0])
         print("After downsampling: des points num:", des_points.shape[0])
 
-        pcd_src = o3d.geometry.PointCloud()
-        pcd_src.points = o3d.utility.Vector3dVector(src_points)
+        # pcd_src = o3d.geometry.PointCloud()
+        # pcd_src.points = o3d.utility.Vector3dVector(src_points)
         # pcd_src.estimate_normals()
         # src_normals = np.array(pcd_src.normals)
 
-        pcd_des = o3d.geometry.PointCloud()
-        pcd_des.points = o3d.utility.Vector3dVector(des_points)
+        # pcd_des = o3d.geometry.PointCloud()
+        # pcd_des.points = o3d.utility.Vector3dVector(des_points)
         # pcd_des.estimate_normals()
         # des_normals = np.array(pcd_des.normals)
 
@@ -301,12 +295,12 @@ def main():
             src_points, gt_rot.as_matrix(), gt_t.reshape(-1, 1))
         corr_i, corr_j = get_correspondences(src_trans, des_points)
         gt_loss = point_to_plane_loss(
-            src_trans, corr_i, des_points, src_normals, corr_j)
-        # visualize_pc_pair(src_trans, des_points)
+            src_trans, corr_i, des_points, des_normals, corr_j)
+        visualize_pc_pair(src_trans, des_points)
 
         # 3. ICP
-        ICP(src_points, src_normals, des_points,
-            des_normals, gt_rot, gt_t, gt_loss, corr_i, corr_j, src_trans)
+        ICP(src_points, des_points,
+            des_normals, gt_rot, gt_t, gt_loss)
         break
 
 

@@ -24,13 +24,12 @@ def draw_points_cloud(data, window_name="Open3d"):
     vis.destroy_window()  # 销毁窗口，该函数必须从主线程调用
 
 
-def generate_box_points(length = 10.0, num = 1000):
+def generate_box_points(length=10.0, num=1000):
     xOy = np.zeros((num, 3))
     random_x = np.random.rand(num) * length
     random_y = np.random.rand(num) * length
     xOy[:, 0] = random_x
     xOy[:, 1] = random_y
-
 
     xOz = np.zeros((num, 3))
     random_x = np.random.rand(num) * length
@@ -72,12 +71,14 @@ def visualize_pc_pair(src_np, dst_np):
     vis.destroy_window()  # 销毁窗口，该函数必须从主线程调用
 
 
-rotation = Rotation.from_euler('xyz', [0.1, 0.2, 0.3])
-t = np.asarray([[10],[20],[30]])
+# rotation = Rotation.from_euler('xyz', [0.1, 0.2, 0.3])
+# t = np.asarray([[10], [20], [30]])
 
-raw_box = generate_box_points()
-des_box = np.dot(rotation.as_matrix(), raw_box.transpose()) + t
-des_box = des_box.transpose()
-print(raw_box.shape)
-print(des_box.shape)
-visualize_pc_pair(raw_box, des_box)
+# raw_box = generate_box_points()
+# des_box = np.dot(rotation.as_matrix(), raw_box.transpose()) + t
+# des_box = des_box.transpose()
+# print(raw_box.shape)
+# print(des_box.shape)
+# visualize_pc_pair(raw_box, des_box)
+
+print(0.9**20)

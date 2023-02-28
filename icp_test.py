@@ -95,7 +95,7 @@ def visualize_correspondence(src_np, dst_np, corr_i, corr_j):
     points_pcd.colors = o3d.utility.Vector3dVector(colors)
 
     vis = o3d.visualization.Visualizer()
-    vis.create_window()
+    vis.create_window(width=1080, height=720)
 
     render_option = vis.get_render_option()
     render_option.background_color = np.array([0, 0, 0])  # 设置背景为黑色
@@ -135,16 +135,18 @@ def get_nearest_point(query, points):
     return idx, dist[idx]
 
 
-def get_correspondences(src_points, des_points, des_tree=None):
+def get_correspondences(src_points, des_points, gating=50):
     dist = np.zeros(len(src_points))
     corr_i = np.arange(0, len(src_points))
     corr_j = np.zeros(len(src_points))
+    gating = max(gating, 5.0)
+    print("gating", gating)
     for i, point in enumerate(src_points):
         # [_, idx, _] = des_tree.search_knn_vector_3d(point, 1)
         min_idx, min_dist = get_nearest_point(point, des_points)
         corr_j[i] = min_idx
         dist[i] = min_dist
-    corr_i = np.where(dist < 200.0)[0]
+    corr_i = np.where(dist < gating)[0]
     corr_j = corr_j[corr_i].astype(int)
     print("correspondences:", len(corr_i))
     return corr_i, corr_j
@@ -171,7 +173,6 @@ def compute_A_b(src_points, des_points, des_normals, corr_i, corr_j):
     A_cols[4] = (des_normals[corr_j, 1]).reshape(-1, 1)
     A_cols[5] = (des_normals[corr_j, 2]).reshape(-1, 1)
     A = np.hstack((A_cols))
-    print(A.shape)
 
     b = np.zeros(len(corr_i))
     for i in range(3):
@@ -184,25 +185,25 @@ def compute_A_b(src_points, des_points, des_normals, corr_i, corr_j):
     return A, b
 
 
-
-def ICP(src_points, src_normals, des_points, des_normals):
-    # des_tree = build_kd_tree(des_points)
+def ICP(src_points, des_points, des_normals):
+    # this algorithm is wrong
 
     r = np.eye(3)
     t = np.zeros((3, 1))
 
-    for iteration in range(20):
-        print("\niteration", iteration)
+    gating = 50.0
+    for iteration in range(50):
+        print("\niteration", iteration, gating)
         # 1. data association(find nearest point)
         src_trans = get_trans_src_points(src_points, r, t)
-        corr_i, corr_j = get_correspondences(src_trans, des_points)
-        # corr_i, corr_j, src_trans = gt_corr_i, gt_corr_j, gt_src_trans
+        gating = gating * 0.9
+        corr_i, corr_j = get_correspondences(src_trans, des_points, gating)
         loss = point_to_plane_loss(
             src_trans, corr_i, des_points, des_normals, corr_j)
         visualize_correspondence(src_trans, des_points, corr_i, corr_j)
 
         rotation = Rotation.from_matrix(r)
-        print("r: ", rotation.as_quat())
+        print("r: ", rotation.as_euler("xyz"))
         print("t: ", t.squeeze())
         print("loss", round(loss, 2))
 
@@ -225,7 +226,7 @@ def ICP(src_points, src_normals, des_points, des_normals):
 
     print("\nFinal result:")
     rotation = Rotation.from_matrix(r)
-    print("r: ", rotation.as_quat())
+    print("r: ", rotation.as_euler("xyz"))
     print("t: ", t.squeeze())
     print("loss", round(loss, 2))
 
@@ -235,24 +236,26 @@ def ICP(src_points, src_normals, des_points, des_normals):
     return
 
 
-def ICP_increment(src_points, src_normals, des_points, des_normals):
+def ICP_increment(src_points, des_points, des_normals):
     # des_tree = build_kd_tree(des_points)
 
     r = np.eye(3)
     t = np.zeros((3, 1))
 
-    for iteration in range(20):
-        print("\niteration", iteration)
+    gating = 50.0
+    for iteration in range(50):
+        print("\niteration", iteration, gating)
         # 1. data association(find nearest point)
         src_trans = get_trans_src_points(src_points, r, t)
-        corr_i, corr_j = get_correspondences(src_trans, des_points)
-        # corr_i, corr_j, src_trans = gt_corr_i, gt_corr_j, gt_src_trans
+        gating = gating * 0.95
+        corr_i, corr_j = get_correspondences(src_trans, des_points, gating)
         loss = point_to_plane_loss(
             src_trans, corr_i, des_points, des_normals, corr_j)
-        visualize_correspondence(src_trans, des_points, corr_i, corr_j)
+        if iteration % 2 == 0:
+            visualize_correspondence(src_trans, des_points, corr_i, corr_j)
 
         rotation = Rotation.from_matrix(r)
-        print("r: ", rotation.as_quat())
+        print("r: ", rotation.as_euler("xyz"))
         print("t: ", t.squeeze())
         print("loss", round(loss, 2))
 
@@ -285,13 +288,12 @@ def ICP_increment(src_points, src_normals, des_points, des_normals):
     return
 
 
-def generate_box_points(length = 10.0, num = 1000):
+def generate_box_points(length=10.0, num=2000, add_noise=False):
     xOy = np.zeros((num, 3))
     random_x = np.random.rand(num) * length
     random_y = np.random.rand(num) * length
     xOy[:, 0] = random_x
     xOy[:, 1] = random_y
-
 
     xOz = np.zeros((num, 3))
     random_x = np.random.rand(num) * length
@@ -306,16 +308,37 @@ def generate_box_points(length = 10.0, num = 1000):
     yOz[:, 2] = random_z
 
     points = np.vstack((xOy, yOz, xOz))
+
+    if add_noise:
+        num2 = int(num/2)
+        noise = (np.random.rand(num2) - 0.5) * length / 3
+        random_x = np.random.rand(num2) * length
+        random_y = np.random.rand(num2) * length
+        random_z = np.random.rand(num2) * length
+        noise_xy = np.zeros((num2, 3))
+        noise_xy[:, 0] = random_x
+        noise_xy[:, 1] = random_y
+        noise_xy[:, 2] = noise
+        noise_xz = np.zeros((num2, 3))
+        noise_xz[:, 0] = random_x
+        noise_xz[:, 1] = noise
+        noise_xz[:, 2] = random_z
+        noise_zy = np.zeros((num2, 3))
+        noise_zy[:, 0] = noise
+        noise_zy[:, 1] = random_y
+        noise_zy[:, 2] = random_z
+        points = np.vstack((points, noise_xy, noise_xz, noise_zy))
+
     return points
-    
+
 
 def main():
     np.set_printoptions(suppress=True)
 
-    rotation = Rotation.from_euler('xyz', [0.1, 0.2, 0.3])
-    t = np.asarray([[10],[20],[30]])
+    rotation = Rotation.from_euler('xyz', [-1.1, 1.4, 1.0])
+    t = np.asarray([[10], [20], [30]])
 
-    src_box = generate_box_points()
+    src_box = generate_box_points(add_noise=True)
     des_box = np.dot(rotation.as_matrix(), src_box.transpose()) + t
     des_box = des_box.transpose()
 
@@ -329,8 +352,7 @@ def main():
     des_pcd.estimate_normals()
     des_normals = np.asarray(des_pcd.normals)
 
-    ICP(src_box, src_normals, des_box, des_normals)
-
+    ICP_increment(src_box, des_box, des_normals)
 
 
 if __name__ == '__main__':
